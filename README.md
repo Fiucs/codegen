@@ -26,8 +26,33 @@ pip install -r requirements.txt
 
 ## 使用方法
 1. 连接sqlite3 数据库，mysql，postgresql
+2. 配置路径设置和数据库连接设置，在`jinjia2Render.py`中
+    db_config = {
+        "db_name":'demo', # 数据库名称
+        "db_type": "mysql", # 数据库类型
+        "db_url": "192.168.17.129", # 数据库地址（sqlite3直接填写数据库文件地址即可，数据库名称不填）
+        "db_port":3306, # 数据库端口
+        "db_user":'root', # 数据库用户名
+        "db_password":'123', # 数据库密码
+    }
+    
+    ge_config={
+        # 设置基本输出路径
+        "base_out_dir" : "out",
+        # 设置项目名称
+        "base_project_name" : "demo",
+        # 设置app名称
+        "app_name": "app",
+        # 包含的表名 ,为空则是不进行过滤
+        "includes_table_names": [],
+    }
+
 2. 运行代码生成命令：
+生成代码
+python jinjia2Render.py
+
 ```bash
+生成的项目是django-ninja ,运行命令
 cd out
 python manage.py runserver
 ```
@@ -41,7 +66,22 @@ pycodegen/
 │   ├── modelTemplate.tpl
 │   └── controllerTemplate.tpl
 ├── out/
-│   └──
+│   └──    
+django-ninja 项目基本结构
+         -- 项目目录结构
+         -- app 目录
+         ------controller文件夹
+         ------service文件夹
+         ------mapper文件夹
+         ------model文件夹
+         ------exception文件夹
+         ------application.yaml 项目配置，端口，数据库
+         ------database.py 数据库初始化
+         ------urls.py 路由配置
+         ------settings.py django项目设置
+         ------asgi.py  ASGI 配置
+         ------wsgi.py WSGI 配置
+         -- manage.py 项目管理脚本
 ├── .gitignore
 ├── LICENSE
 ├── README.md
