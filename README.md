@@ -32,7 +32,8 @@ pip install -r requirements.txt
 1. 连接sqlite3 数据库，mysql，postgresql
 2. 配置路径设置和数据库连接设置，在 `jinjia2Render.py`中
 
-   ```db_config:{
+   ```
+   db_config:{
    "db_name":'demo', # 数据库名称
    "db_type": "mysql", # 数据库类型
    "db_url": "192.168.17.129", # 数据库地址（sqlite3直接填写数据库文件地址即可，数据库名称不填）
