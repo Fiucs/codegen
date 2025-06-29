@@ -43,3 +43,25 @@ class Result:
             "msg": msg,
             "data": data
         }
+
+
+
+from pydantic import BaseModel
+from typing import TypeVar, Generic, Optional    
+T = TypeVar('T')
+
+class ResultSchema(BaseModel, Generic[T]):
+    
+    code: int = 200
+    msg: str = "操作成功"
+    data: Optional[T] = None
+    
+    
+    @staticmethod
+    def ok(data: Optional[T] = None,msg: str = "操作成功",code: int = 200):
+        return ResultSchema(code=code,msg=msg,data=data)
+        
+
+    @staticmethod
+    def error(msg: str = "操作失败",code: int = 400, errors: Optional[Any] = None) :
+        return ResultSchema(code=code,msg=msg,data=errors)        

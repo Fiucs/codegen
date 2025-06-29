@@ -43,7 +43,14 @@ def init_db():
 
     elif db_config['database'] == 'mysql':
         # 连接mysql数据库
-        db = MySQLDatabase(db_config['url'], user=db_config['username'], password=db_config['password'], timeout=30)
+        db = MySQLDatabase(
+                            db_config['dbname'],  # 数据库名称
+                            user=db_config['username'],      # 数据库用户名
+                            password=db_config['password'], # 数据库密码
+                            host=db_config['url'], # 数据库主机地址
+                            port=db_config['port'],        # 数据库端口
+                            charset=db_config['charset'],
+                            use_unicode=True)
     else:
         raise ValueError("Unsupported database type in application.yaml")
     

@@ -1,6 +1,16 @@
 # PyCodeGen
 
-一个强大的Python代码生成工具，能够根据数据库结构自动生成各类代码文件，提高开发效率。
+一个强大的Python代码生成工具，能够根据数据库结构自动生成各类代码文件，提高开发效率。生成的代码文件包含：
+- 控制器（controller）：处理HTTP请求和响应的代码
+- 服务层（service）：封装业务逻辑的代码
+- 数据操作层（mapper）：负责数据的增删改查操作
+- 模型（Model）：定义数据库表结构的Python类
+- 
+
+## 项目框架
+- Django-Ninja：用于快速创建RESTful API的库
+- Peewee ORM：用于数据库操作的Python ORM库
+
 
 ## 功能特性
 - **多数据源支持**：和`getTablesData_peewee.py`（Peewee ORM）方式获取数据库表结构数据，兼容不同开发习惯
@@ -15,10 +25,11 @@ pip install -r requirements.txt
 ```
 
 ## 使用方法
-1. 准备数据库文件（如codegen.db）
+1. 连接sqlite3 数据库，mysql，postgresql
 2. 运行代码生成命令：
 ```bash
-python generate_code.py --db db/codegen.db --template template/
+cd out
+python manage.py runserver
 ```
 
 ## 项目结构

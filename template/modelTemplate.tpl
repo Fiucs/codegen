@@ -1,11 +1,24 @@
 {# userModel.tpl #}
 from typing import Optional
 from ninja import Schema
-from peewee import AutoField, TextField, DateField,IntegerField
+from peewee import AutoField,BlobField, FloatField, TextField, DateField,IntegerField
 import datetime
 from playhouse.shortcuts import model_to_dict, dict_to_model
+from pydantic import validator
 from {{appName}}.model.customBaseModel import customBaseModel
-
+# 如果遇到Type is not JSON serializable: bytes 。可在各自schema中进行转换，然后使用ResultSchema 进行返回
+# 一般不是返回json 而是流式传输到前端
+##例如 
+    # 二进制数据  流式传输而非json
+#    blob_data: Optional[str] = None
+#    @validator("blob_data", pre=True)
+#    def convert_bytes(cls, v):
+#        if isinstance(v, bytes):
+#            try:
+#                return v.decode('utf-8')
+#            except UnicodeDecodeError:
+#                return v.hex()  # 二进制转十六进制
+#        return v
 class {{ class_name }}(customBaseModel):
 {% for col in columns %}
   # {{ col.comment }}

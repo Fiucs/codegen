@@ -5,7 +5,8 @@ from {{appName}}.context import MyContext
 
 def main():
     """Run administrative tasks."""
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'apidemo.settings')
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', '{{appName}}.settings')
+
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:
@@ -20,7 +21,8 @@ def main():
     config = {}
     base_dir = MyContext.BASE_DIR
     config_file_path = MyContext.CONFIG_FILE_PATH
-    
+    url=""
+    port=""
     with open(config_file_path, 'r', encoding='utf-8') as file:
         config = yaml.safe_load(file)
     # 2. 从config中获取端口号,默认8000
@@ -40,6 +42,9 @@ def main():
         sys.argv.append(f"{url}:{port}")
 
     execute_from_command_line(sys.argv)
+    print(f"项目运行在 {url}:{port}")
+    print(f"项目基本路径:{base_dir}")
+    print(f"配置文件路径:{config_file_path}")
 
 
 if __name__ == '__main__':

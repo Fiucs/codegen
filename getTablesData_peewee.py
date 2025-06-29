@@ -95,7 +95,7 @@ def get_database_schema_with_comments(db_path: str):
     return table_comments
 
 # 读取数据库构造
-def read_db_construct_01(db,includes_table_names:List[str]):
+def read_db_construct_01(db,includes_table_names:List[str],dbConfig:dict):
     """
     读取数据库构造
     参数:
@@ -107,19 +107,139 @@ def read_db_construct_01(db,includes_table_names:List[str]):
 
     # 获取db的名字
     db_name = db.database
+    db_type = dbConfig.get("db_type")
+
     # 获取db的类型
     
     # 获取所有表名
     table_names = []
+    database_schema={}
     try:
-        cursor = db.execute_sql("SELECT name FROM sqlite_master WHERE type='table'")
-        table_names = [row[0] for row in cursor.fetchall()]
+        table_names=[]
+        if db_type == 'sqlite3':
+            # 这是sqlite3中的
+            cursor = db.execute_sql("SELECT name FROM sqlite_master WHERE type='table'")
+            table_names = [row[0] for row in cursor.fetchall()]
+                
+            print(f"数据库 '{db_name}' 中共有 {len(table_names)} 个表")
+            print(f"表名: {table_names}")
+            database_schema=get_sqlite3_cols(table_names=table_names,db=db,includes_table_names=includes_table_names)
+        elif db_type == 'mysql':
+            # 这是mysql中的
+            table_names = db.get_tables()
+            #  TODO 遍历每张表获取结构 
+            # 调用MySQL表结构获取函数
+            database_schema = get_mysql_cols(table_names=table_names, db=db, 
+                                            includes_table_names=includes_table_names, 
+                                            db_name=db_name)      
     except Exception as e:
         print(f"获取表名失败: {e}")
+
     
-    print(f"数据库 '{db_name}' 中共有 {len(table_names)} 个表")
+
+    db.close()
+    return database_schema
+
+
+# 获取MySQL表结构（添加注释支持）
+def get_mysql_cols(table_names: List[str], db, includes_table_names: List[str], db_name: str):
+    import re
+    database_schema = {}
     
-    # 存储所有表结构的字典
+    for table_name in table_names:
+        if includes_table_names and includes_table_names != [] and table_name not in includes_table_names:
+            continue
+            
+        columns = []
+        primary_keys = []
+        foreign_keys = []
+        
+        try:
+            # 获取列信息（包含注释）
+            col_query = f"""
+                SELECT 
+                    COLUMN_NAME, 
+                    COLUMN_TYPE, 
+                    IS_NULLABLE, 
+                    COLUMN_DEFAULT, 
+                    EXTRA, 
+                    COLUMN_KEY,
+                    COLUMN_COMMENT
+                FROM information_schema.COLUMNS 
+                WHERE TABLE_SCHEMA = '{db_name}' AND TABLE_NAME = '{table_name}'
+                ORDER BY ORDINAL_POSITION
+            """
+            cursor = db.execute_sql(col_query)
+            
+            for row in cursor.fetchall():
+                col_name, col_type, is_nullable, col_default, extra, col_key, col_comment = row
+                
+                columns.append({
+                    'name': col_name,
+                    'type': col_type.upper(),
+                    'nullable': is_nullable == 'YES',
+                    'default': col_default,
+                    'autoincrement': 'auto_increment' in extra.lower(),
+                    'primary_key': col_key == 'PRI',
+                    'comment': col_comment  # 添加注释信息
+                })
+                
+                # 记录主键
+                if col_key == 'PRI':
+                    primary_keys.append(col_name)
+                    
+            # 获取外键信息
+            fk_query = f"""
+                SELECT 
+                    COLUMN_NAME, 
+                    REFERENCED_TABLE_NAME, 
+                    REFERENCED_COLUMN_NAME
+                FROM information_schema.KEY_COLUMN_USAGE
+                WHERE TABLE_SCHEMA = '{db_name}' 
+                    AND TABLE_NAME = '{table_name}' 
+                    AND REFERENCED_TABLE_NAME IS NOT NULL
+            """
+            cursor = db.execute_sql(fk_query)
+            
+            for row in cursor.fetchall():
+                col_name, ref_table, ref_col = row
+                foreign_keys.append({
+                    'constrained_columns': [col_name],
+                    'referred_table': ref_table,
+                    'referred_columns': [ref_col]
+                })
+                
+            # 尝试获取表注释
+            try:
+                cursor = db.execute_sql(f"""
+                    SELECT TABLE_COMMENT 
+                    FROM information_schema.TABLES 
+                    WHERE TABLE_SCHEMA = '{db_name}' AND TABLE_NAME = '{table_name}'
+                """)
+                table_comment = cursor.fetchone()[0]
+                if table_comment:
+                    # 将表注释添加到表信息中
+                    if database_schema.get(table_name):
+                        database_schema[table_name]['comment'] = table_comment
+            except:
+                pass
+                
+        except Exception as e:
+            print(f"处理表 {table_name} 时出错: {e}")
+            continue
+            
+        # 构建表结构信息
+        table_info = {
+            'columns': columns,
+            'primary_keys': primary_keys,
+            'foreign_keys': foreign_keys
+        }
+        database_schema[table_name] = table_info
+        
+    return database_schema
+# 获取sqlite3中表的数据结构
+def get_sqlite3_cols(table_names:List[str],db,includes_table_names:List[str]):
+        # 存储所有表结构的字典
     database_schema = {}
     
     # 遍历每个表，获取字段信息
@@ -175,9 +295,10 @@ def read_db_construct_01(db,includes_table_names:List[str]):
         }
         
         database_schema[table_name] = table_info
-    
-    db.close()
+        
     return database_schema
+
+
 
 # 读取数据库构造并特殊处理注释
 def read_db_construct(dbConfig:dict,table_names:List[str]):
@@ -199,12 +320,22 @@ def read_db_construct(dbConfig:dict,table_names:List[str]):
         db = SqliteDatabase(dbUrl)
         db.connect()
     elif dbType == 'mysql':
-        db = MySQLDatabase(dbUrl)
+        db = MySQLDatabase(
+                dbConfig.get("db_name"),  # 数据库名称
+                user=dbConfig.get("db_user"),      # 数据库用户名
+                password=dbConfig.get("db_password"), # 数据库密码
+                host=dbConfig.get("db_url"), # 数据库主机地址
+                port=dbConfig.get("db_port"),        # 数据库端口
+                charset='utf8mb4',
+                use_unicode=True
+)       
+        db.connect()
+
     elif dbType == 'postgresql':
-        db = PostgresqlDatabase(dbUrl)
-    database_schema = read_db_construct_01(db,table_names)
+        print('postgresql暂不支持')
+    database_schema = read_db_construct_01(db,table_names,dbConfig)
     print(f'得到数据库{database_schema}的构造')
-    # 如果是sqlite3则调用get_database_schema_with_comments
+    # 如果是sqlite3则调用get_database_schema_with_comments获取注释
     if dbType == 'sqlite3':
         # 去掉数据库一些默认的表，后期可通过传入指定的表来解析
         exclude_tables = ['sqlite_sequence']

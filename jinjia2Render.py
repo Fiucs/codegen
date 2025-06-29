@@ -3,8 +3,7 @@
 
 import os
 import datetime
-from pipes import Template
-from re import template
+import shutil
 import uuid
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -65,9 +64,30 @@ type_map = {
         "INT":     ("IntegerField", "int"),
         "TEXT":    ("TextField"   , "str"),
         "BLOB":    ("BlobField"   , "bytes"),
-        
+        "REAL":    ("FloatField"  , "float"),
     },
         # 其他 SQL 类型可按需补充
+     "mysql":{
+        "INTEGER": ("IntegerField"  , "int"),
+        "INT":     ("IntegerField", "int"),
+        "VARCHAR": ("CharField"   , "str"),
+        "TEXT":    ("TextField"   , "str"),
+        "ENUM":    ("CharField"   , "str"),
+        "DATE":    ("DateField"   , "datetime.date"),
+        "DATETIME":("DateTimeField", "datetime.datetime"),
+        "TIMESTAMP":("TimestampField", "datetime.datetime"),
+        "DECIMAL": ("DecimalField", "Decimal"),
+        "FLOAT":   ("FloatField"  , "float"),
+        "DOUBLE":  ("DoubleField" , "float"),
+        "TINYINT": ("IntegerField", "int"),
+        "JSON":    ("TextField"   , "str"),
+        "BLOB":    ("BlobField"   , "bytes"),
+        "BIGINT":  ("BigIntegerField", "int"),
+        "CHAR":    ("CharField"   , "str"),
+        # 其他类型待补充....-
+
+
+     },
     
 }
 
@@ -86,6 +106,7 @@ def handleModel(table_name:str,info:dict,base_out_dir:str,template,app_name:str,
         cols = []
         for col in info["columns"]:
             name_lower = col["name"].lower()
+            sql_type = col["type"].upper()
             # 优先根据字段名判断 DateField
             if "date" in name_lower or "time" in name_lower:
                 field_type, py_type = "DateField", "datetime.date"
@@ -93,7 +114,7 @@ def handleModel(table_name:str,info:dict,base_out_dir:str,template,app_name:str,
             elif col["autoincrement"]:
                 field_type, py_type = "AutoField", "int"
             else:
-                sql_type = col["type"].upper()
+                
                 # 注意可能存在integer(10)的情况需要截取，并转为大写
                 if "(" in sql_type:
                     sql_type = sql_type.split("(")[0]
@@ -120,6 +141,14 @@ def handleModel(table_name:str,info:dict,base_out_dir:str,template,app_name:str,
                     params.append("default=datetime.datetime.now()")
                 # 无论是否有 default，都补充 formats
                 params.append("formats='%Y-%m-%d'")
+            elif field_type in ["CharField","TextField"]:
+                # 对于 CHAR 类型，补充 max_length
+                defaultValue=col.get("default","")
+                if defaultValue: 
+                    params.append(f'''default="{defaultValue}"''')
+                else:
+                    params.append(f'''default={defaultValue}''')
+    
             else:
                 # 非 DateField 的默认值，保持原元数据
                 if col.get("default") is not None:
@@ -164,8 +193,11 @@ def handleModel(table_name:str,info:dict,base_out_dir:str,template,app_name:str,
 
 
 # 生成代码
-def generate_code(base_project_path,app_name,includes_table_names:list=[],db_config:dict={}):
+def generate_code(ge_config,db_config:dict={}):
     
+    base_project_path=ge_config["base_app_path"]
+    app_name=ge_config["app_name"]
+    includes_table_names=ge_config["includes_table_names"]
     
     # 1.初始化metadata
     import orjson
@@ -188,7 +220,7 @@ def generate_code(base_project_path,app_name,includes_table_names:list=[],db_con
     serviceTemplate = env.get_template("serviceTemplate.tpl")
     controllerTemplate = env.get_template("controllerTemplate.tpl")
     mapperTemplate = env.get_template("mapperTemplate.tpl")
-
+    controllerNameList=[]
     # 定义基本上下文
 
     # —— 4. 逐表渲染 —— #
@@ -240,11 +272,14 @@ def generate_code(base_project_path,app_name,includes_table_names:list=[],db_con
         }
         rendered_controller = controllerTemplate.render(**controller_ctx)
         write_to_file(base_project_path, "controller", f"{controller_class_name}.py", rendered_controller)
+        controllerNameList.append(controller_class_name)
+        
 
 
     # 处理其他文件
     ctx={
         "appName":app_name, # app的名称
+        "controllerNameList":controllerNameList,
     }
     # 获取env中所有的template
     template_names=env.list_templates()
@@ -262,13 +297,29 @@ def generate_code(base_project_path,app_name,includes_table_names:list=[],db_con
                 path,filename=os.path.split(template_name)
                 write_to_file(base_project_path,path,filename.replace(".tpl",".py"),rendered)
             else :   
-                            # 如果包含manage 则输出到base_project_path的上一级目录下
+                    # 如果包含manage 则输出到base_project_path的上一级目录下
                 if "manage" in template_name:
                     base_path=base_project_path.replace("/"+app_name,"")
                     write_to_file(base_path,"",template_name.replace(".tpl",".py"),rendered)
+                elif "application" in template_name : 
+                    # 如果是application 则输出为yaml
+                    write_to_file(base_project_path,"",template_name.replace(".tpl",".yaml"),rendered)
                 else:
                     # 无路径，直接输出到根目录文件夹下
                     write_to_file(base_project_path,"",template_name.replace(".tpl",".py"),rendered)
+        # 非.tpl文件的处理
+        elif not template_name.endswith(".tpl"):
+            path,filename=os.path.split(template_name)
+            # 采用copy的方式 path=base_project_path+"/"+path，从
+            # 获取template的路径
+            # 采用copy的方式,不存在文件则创建
+            if not os.path.exists(base_project_path+"/"+path):
+                os.makedirs(base_project_path+"/"+path)
+            shutil.copyfile(os.path.join("template",template_name), base_project_path+"/"+path+"/"+filename)
+            
+
+            
+        
             
 
 # 将模板渲染到文件中
@@ -294,18 +345,52 @@ def write_to_file(base_out_dir,package_name,file_name,rendered):
 
 if __name__ == "__main__":
 
-    # 设置基本输出路径
-    base_out_dir = "out"
-    # 设置项目名称
-    base_project_name = "demo"
-    # 设置app名称
-    app_name="app"
     # 数据库连接配置
     db_config = {
-        "db_type": "sqlite3",
-        "db_url": "db/codegen.db",
+        "db_name":'demo',
+        "db_type": "mysql",
+        "db_url": "192.168.17.129", 
+        "db_port":3306,
+        "db_user":'root',
+        "db_password":'123',
     }
+    
+    #     db_config = {
+    #     "db_type": "sqlite3",
+    #     "db_url": "db/codegen.db",
+    # }
+    # 代码生成规则配置
+    # django-ninja 项目基本结构
+    # -- 项目目录结构
+    # -- app 目录
+    # ------controller文件夹
+    # ------service文件夹
+    # ------mapper文件夹
+    # ------model文件夹
+    # ------exception文件夹
+    # ------application.yaml 项目配置，端口，数据库
+    # ------database.py 数据库初始化
+    # ------urls.py 路由配置
+    # ------settings.py django项目设置
+    # ------asgi.py  ASGI 配置
+    # ------wsgi.py WSGI 配置
+    # -- manage.py 项目管理脚本
 
+    
+    ge_config={
+        # 设置基本输出路径
+        "base_out_dir" : "out",
+    # 设置项目名称
+        "base_project_name" : "demo",
+        # 设置app名称
+        "app_name": "app",
+        # 包含的表名 ,为空则是不进行过滤
+        "includes_table_names": [],
+    }
+    base_out_dir=ge_config["base_out_dir"]
+    base_project_name=ge_config["base_project_name"]
+    app_name=ge_config["app_name"]
+    
     # 如果不存在out,out/demo,out/demo/demo 则创建
     if not os.path.exists(base_out_dir):
         os.makedirs(base_out_dir)
@@ -314,4 +399,9 @@ if __name__ == "__main__":
         os.makedirs(f"{base_out_dir}/{base_project_name}/{app_name}")
     base_project_path = f"{base_out_dir}/{base_project_name}"
     base_app_path=f"{base_out_dir}/{base_project_name}/{app_name}"
-    generate_code(base_app_path,app_name,[],db_config)
+    # 设置project路径
+    ge_config["base_project_path"]=base_project_path
+    # 设置app 的路径
+    ge_config["base_app_path"]=base_app_path
+    
+    generate_code(ge_config,db_config)
